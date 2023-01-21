@@ -95,8 +95,9 @@ void SRXEScrollArea(int TA, int SA, int BA);
 //
 // Scroll the screen N lines vertically (positive or negative)
 // The value given represents a delta which affects the current scroll offset
+// Returns the current scroll value
 //
-void SRXEScroll(int iLines);
+int SRXEScroll(int iLines);
 //
 // Reset the scroll position to 0
 //
@@ -136,6 +137,12 @@ byte *SRXEGetKeyMap(void);
 byte SRXEGetKey(void);
 
 //
+// Returns the current state of the power key
+// 1/TRUE if pressed, 0/FALSE if not.
+//
+byte SRXEGetPowerKey(void);
+
+//
 // Erase a 4k sector
 // This is the smallest area that can be erased
 // It can take around 60ms
@@ -153,6 +160,35 @@ int SRXEFlashWritePage(uint32_t ulAddr, uint8_t *pSrc);
 // Read N bytes from SPI flash
 //
 int SRXEFlashRead(uint32_t ulAddr, uint8_t *pDest, int iLen);
+
+#define K_NONE 0
+#define K_F1 0xf0
+#define K_F2 0xf1
+#define K_F3 0xf2
+#define K_F4 0xf3
+
+#define K_F5 0xf4
+#define K_F6 0xf5
+#define K_F7 0xf6
+#define K_F8 0xf7
+#define K_F9 0xf8
+#define K_F10 0xf9
+#define K_Menu 0x1
+
+#define K_Space 0x32
+#define K_Del 0x08
+#define K_Backspace 0x7f
+#define K_Enter 0x0d
+#define K_Up 4
+#define K_Down 5
+#define K_Left 2
+#define K_Right 3
+
+#define K_PgUp 0xe
+#define K_PgDown 0xf
+#define K_Home 0xa
+#define K_End 0xb
+
 
 #endif // __SMART_RESPONSE_XE__
 

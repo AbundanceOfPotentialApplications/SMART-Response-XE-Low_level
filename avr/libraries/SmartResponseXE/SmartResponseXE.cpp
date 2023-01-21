@@ -21,6 +21,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+// 2021 AbundanceOfPotentialApplications:
+//  improved the interrupt/power button interaction
+//  added SRXEGetPowerButton function
+//  more characters for the keyboard: @,#,&,\,~,^,..., "Function Keys", PgUp, PgDn
+//   upper/lower index            --> ^
+//   upper/lower index + shift    --> \
+//   space + sym                  --> ~
+//   square root + shift/sym      --> Menu (0x01)
+//   numkeys+shift works same as numkeys+sym
+//  optional(configured via define) DEL back on DEL key
+//  
+
 
 // 18/11/2019 fdufnews keyboard map modification
 // DEL          --> enter (0x0D) (more intuitive position)
@@ -69,6 +81,30 @@ typedef enum
 // Chip select for the external 1Mb flash module
 #define CS_FLASH 0xd3
 
+#ifndef DEL_ON_DELKEY
+// default: "del" key is used as enter, backspace needs shift or sym+
+#define KDEL K_Enter
+#define KDELSHIFT K_Backspace
+#define KDELSYM K_Backspace
+#else
+// optional: Del key is for delete, with shift it's enter, with sym it's backspace
+#define KDEL K_Del
+#define KDELSHIFT K_Enter
+#define KDELSYM K_Backspace
+#endif
+
+#ifndef PAGE_KEYS
+#define KSYML K_Left
+#define KSYMR K_Right
+#define KSYMU K_Up
+#define KSYMD K_Down
+#else
+#define KSYML K_Home
+#define KSYMR K_End
+#define KSYMU K_PgUp
+#define KSYMD K_PgDown
+#endif
+
 //Keyboard
 //Logical Layout (SK# are screen keys: top to bottom 1-5 on left, 6-10 on right):
 //                ROW1|ROW2|ROW3|ROW4|ROW5|ROW6|ROW7|ROW8|ROW9|ROW10
@@ -80,23 +116,23 @@ typedef enum
 //           COL6  SK1| SK2| SK3| SK4| SK5| SK6| SK7| SK8| SK9| SK10
 byte OriginalKeys[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
                        'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
-                       'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 0xd, // enter (now del needs a shift)
+                       'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', KDEL, // enter or del
                        0  , 'z', 'x', 'c', 'v', 'b', 'n', 0x5, 0, 0x4, // 5 = down, 4 = up
-                       0  , 0xd,  0x1b,  0, ' ', ',', '.', 'm',  2,  3, // 2 = left, 3 = right, root = ESC
+                       0  , 0xd,  0x1b,  '^', ' ', ',', '.', 'm',  2,  3, // 2 = left, 3 = right, root = ESC
                        0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9
                       };
 byte ShiftedKeys[] =  {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
                        'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
-                       'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 8,
+                       'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', KDELSHIFT,
                        0  , 'Z', 'X', 'C', 'V', 'B', 'N', 0x5, 0, 0x4, // 5 = down
-                       0  , 0xd,  0,  0, '_', ',', '.', 'M',  2,  3,
+                       0  , 0xd,  0x1,  '\\', '_', ',', '.', 'M',  2,  3,
                        0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9
                       };
 byte SymKeys[] =       {'!', '2', '3', '$', '%', '6', '\'', '\"', '(', ')',
                         'q', 'w', 'e', 'r', 't', 'y', 'u', ';', '[', ']', // i = ;
-                        '=', '+', '-', 'f', 'g', 'h', 'j', ':', '?', 8,
-                        0 , '*', '/', 'c', 'v', 'b', 'n', 0x5, 0, 0x4, // z = *, x = /
-                        0 , 0xd, 0 , 0 , 0x1, '<', '>', 'm', 2, 3, // 1 = menu
+                        '=', '+', '-', 'f', 'g', 'h', 'j', ':', '?', KDELSYM,
+                        0 , '*', '/', 'c', 'v', 'b', 'n', KSYMD, 0, KSYMU, // z = *, x = /
+                        0 , 0xd, 0x1 , 0 , '~', '<', '>', 'm', KSYML, KSYMR, // 1 = menu
                         0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9
                        };
 
@@ -335,7 +371,8 @@ void SRXESleep(void)
   DDRD &= ~(1 << PORTD2); //PIN INT2 as input
   PORTD |= (1 << PORTD2); // pull-up resistor, the pin is forced to 1 if nothing is connected
   EIMSK &= ~(1 << INT2); //disabling interrupt on INT2
-  EICRA &= ~((1 << ISC21) | (1 << ISC20)); // low level triggers interrupt
+  EICRA &= ~(1 << ISC20); // bits 20:21  = 0b10
+  EICRA |= (1 << ISC21); // interrupt on falling edge - ie. button pressed
   EIFR |= (1 << INTF2); //clear interrupt flag
   EIMSK |= (1 << INT2); //enabling interrupt flag on INT2
 
@@ -351,6 +388,8 @@ void SRXESleep(void)
   // We are guaranteed that the sleep_cpu call will be done
   // as the processor executes the next instruction after
   // interrupts are turned on.
+
+  sei(); // just in case
   sleep_cpu ();   // one cycle
   SRXEPowerUp();
 } /* SRXESleep() */
@@ -618,7 +657,7 @@ void SRXEScrollArea(int TA, int SA, int BA)
 //  fdufnews 12/2019
 // scroll offset is modulo scrollArea and not LCD_HEIGHT
 //
-void SRXEScroll(int iLines)
+int SRXEScroll(int iLines)
 {
   byte b;
 
@@ -627,6 +666,7 @@ void SRXEScroll(int iLines)
   SRXEWriteCommand(0x37); // set scroll start line
   b = (byte)iScrollOffset;
   SRXEWriteDataBlock(&b, 1);
+  return iScrollOffset;
 } /* SRXEScroll() */
 
 
@@ -674,8 +714,8 @@ void SRXERectangle(int x, int y, int cx, int cy, byte color, byte bFilled)
 {
   byte bTemp[128];
 
-  if (x < 0 || x > 127 || y < 0 || y > 135) return;
-  if (x + cx > 127 || y + cy > 135) return;
+  if (x < 0 || x > 127 || y < 0 || y > 159) return;
+  if (x + cx > 128 || y + cy > 160) return;
   if (bFilled)
   {
     SRXESetPosition(x * 3, y, cx * 3, cy);
@@ -1110,4 +1150,14 @@ byte SRXEGetKey(void)
   } // for iCol
   return bKey; // 0 if no keys pressed
 } /* SRXEGetKey() */
+
+
+
+byte SRXEGetPowerKey()
+{
+	if (mydigitalRead(0xd2) == LOW) return 1;
+	return 0;
+}	
+
+
 
